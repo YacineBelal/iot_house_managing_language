@@ -1,0 +1,632 @@
+// Specification JCup
+import java_cup.runtime.*;
+import java.util.*;
+import java.util.Map.Entry;
+import java.io.*;
+
+ 
+parser code {:
+	public static void main(String args[]) throws Exception {
+		new parser(new Yylex(System.in)).parse();
+	}
+
+	public void syntax_error(Symbol cur_token) { 
+		// n'interrompt pas la compil... 
+		// on est par defaut dans l'etat error qui permet ensuite la recup
+		// par défaut : report_error("syntax error", null);
+		report_error("Syntaxe incorrecte <"+tokenToString(cur_token)+">", null);        
+	}
+
+	public void report_error(String message, Object info) {   
+		// n'interrompt pas la compil
+		if (info == null) System.err.println("Mon erreur <"+ ptext()+ "> ligne "+ pline() + ", colonne " + pcolumn() + " : " + message);
+		else System.err.println("Mon erreur <"+ptext()+ "> ligne "+ pline() + ", colonne " + pcolumn() + " : " +message+" : "+info);
+		System.err.println("-> mais on continue l'analyse... ");
+	}
+
+	public void unrecovered_syntax_error(Symbol cur_token) {
+    	// par defaut : report_fatal_error("Couldn't repair and continue parse", null);
+		// on n'a pas reussi a faire de la recup
+		report_fatal_error("Recuperation impossible <"+tokenToString(cur_token)+">", null);   // interrompt la compil     
+	}
+
+	public void report_fatal_error(String message, Object info) {  
+		// qd cette fct est appelee, message vaut par defaut "Couldn't repair and continue parse"
+		String m = "Mon erreur fatale <"+ ptext()+ "> ligne " + pline() + ", colonne " + pcolumn() + " : " + message;
+		if (info == null) System.err.println(m);
+		else System.err.println(m+" : "+info);
+		System.err.println("-> arrêt de l'analyse...");
+		done_parsing(); // interrompt la compil
+  	}
+
+	public int pline(){
+		return ((Yylex)getScanner()).getYyLine();
+	}
+	public int pcolumn(){
+		return ((Yylex)getScanner()).getYyColumn();
+	}
+	public String ptext(){
+		return ((Yylex)getScanner()).getYyText();
+	}
+
+
+public String tokenToString (Symbol token) {
+// qqs exemples pour voir...
+     switch (token.sym) {
+	case sym.SI : return "SI"; 
+    case sym.ALORS : return "ALORS";
+    case sym.SINON : return "SINON";
+    case sym.FSI : return "FSI";
+	case sym.CHAINE : return "CHAINE "+token.value;  
+	case sym.ENTIER : return "ENTIER "+token.value;  
+	case sym.POURTOUT : return "POURTOUT";
+    case sym.FAIRE : return "FAIRE";
+    case sym.FAIT : return "FAIT";
+	case sym.POINT : return ".";
+    case sym.POINTV : return ";";
+    case sym.V : return ",";
+    case sym.DPOINT : return ":";
+    case sym.DEGAL : return "==";
+    case sym.EGAL : return "=";
+    case sym.PG : return "(";
+    case sym.PD : return ")";
+    case sym.AG : return "{";
+    case sym.AD : return "}";
+    case sym.definir : return "definir";
+    case sym.programmer : return "programmer";
+    case sym.associer : return "associer";
+    case sym.message : return "message";
+    case sym.executer_scenario : return "executer_scenario";
+    case sym.ProgD : return  "<PROGRAMME_DOMUS>";
+    case sym.ProgDF : return "</ROGRAMME_DOMUS>";
+    case sym.Dec_App : return "<DECLARATION_APPAREILS>" ;
+    case sym.Dec_AppF : return "</DECLARATION_APPAREILS>" ;
+    case sym.Dec_Int : return "<DECLARATION_INTERFACES>" ;
+    case sym.Dec_IntF : return "</DECLARATION_INTERFACES>" ; 
+    case sym.Dec_Sce : return "<DECLARATION_SCENARII>";
+    case sym.Dec_SceF : return "<DECLARATION_SCENARII>";
+    case sym.Scenario : return ""+token.value ;
+    case sym.ScenarioF : return ""+token.value ;
+    case sym.Dec_Com : return "<DECLARATION_COMMANDES>" ;
+    case sym.Dec_ComF : return "</DECLARATION_COMMANDES>" ;
+    case sym.ECLAIRAGE : return "ECLAIRAGE" ;
+    case sym.VOLET : return "VOLET" ;
+    case sym.FENETRE : return "FENETRE" ;
+    case sym.CHAUFFAGE : return "CHAUFFAGE" ;
+    case sym.ALARME : return "ALARME" ;
+    case sym.AUTRE : return "AUTRE"+token.value;
+    case sym.APPR_DIST : return "APPR_DIST" ;
+    case sym.DATE : return " DATE "+token.value ;
+    case sym.OPERATION : return "OPERATION" ;
+    case sym.OPERATION_ET : return "OPERATION_ETAT" ;
+	case sym.ETAT : return "ETAT " ;
+    case sym.IDF : return "IDF "+token.value ;
+    case sym.CD : return "CD "+token.value ;
+	case sym.AUTRE_VIDE : return "AUTRE_VIDE";
+
+
+   
+      
+
+	default : return "Token imprévu ou error";
+	}
+}
+
+:}
+
+
+
+action code {:
+Vector<String> v=new Vector<String>();   
+int type=0;
+String autre;
+String ensemble=null;
+String scenario_contenu="";
+String T;
+boolean boucle;
+boolean cond;
+String msg=null;
+boolean other=false;
+String iterateur=null;
+HashMap <String,Entree> App_simple = new LinkedHashMap<String, Entree>();
+HashMap <String,Vector<String>> App_struct = new LinkedHashMap<String,Vector<String>>();
+HashMap <String,String> Scenarios = new LinkedHashMap<String, String>();
+boolean inst_impossible=false;
+
+
+      
+void exemple_de_fonction(String i1, String i2)
+{
+	String m = "Erreur syntaxique <"+i2+"> au lieu de <"+i1+">";
+	if (!(i1.equals(i2))) parser.report_error(m,null);	 
+}
+
+void identifiant_existant(String id)
+{
+String m= "l'identifiant "+id+" est déja déclaré! erreur semantique ligne : "+parser.pline()+" colonne :"+parser.pcolumn();
+parser.report_error(m,null);
+
+}
+
+void scenario_existant(String id)
+{
+String m= "Scenario "+id+" ne peut etre déclaré car l'identifiant "+id+" a déja été délcaré! erreur semantique ligne : "+parser.pline()+" colonne :"+parser.pcolumn();
+parser.report_error(m,null);
+
+}
+
+void scenario_fermé(String id,String id2)
+{
+String m= "le scenario "+id+" a été fermé avec l'identifiant "+id2+" erreur semantique ligne : "+parser.pline()+" colonne :"+parser.pcolumn();
+parser.report_error(m,null);
+
+}
+
+void boucle_impossible(String id)
+{
+String m= "La boucle ne pourra etre exécuté car l'identifiant "+id+"  a déja été délcaré! erreur semantique ligne : "+parser.pline()+" colonne :"+parser.pcolumn();
+parser.report_error(m,null);
+
+}
+
+void generate_code (String str,String path) throws IOException
+ {
+  FileWriter writer=new FileWriter(path);
+  PrintWriter printer=new PrintWriter(writer);
+  printer.print(str);
+  printer.close();
+ }
+:}
+
+terminal SI, ALORS, FSI,POURTOUT,SINON,FAIRE,FAIT,POINT,POINTV,VOLET,ECLAIRAGE,V,DPOINT,DEGAL,EGAL,PG,PD,AG,AD,CD,Scenario,ScenarioF;
+terminal definir,programmer,associer,message,executer_scenario,ProgD,ProgDF,Dec_App,Dec_AppF,Dec_Com,Dec_ComF,Dec_Int,Dec_IntF;
+terminal Dec_Sce,Dec_SceF,FENETRE,ALARME,AUTRE_VIDE,APPR_DIST,CHAUFFAGE;
+terminal String IDF,DATE,CHAINE,AUTRE,OPERATION,ETAT,OPERATION_ET;
+terminal Integer ENTIER;
+
+
+
+non terminal DEBUT,APPAREILS,INTERFACES,COMMANDES,SCENARIOS,IDFS,ZONE_APPAREILS,ZONE_COMMANDE,ZONE_COMMUNE,ZONE_INTERFACES,ZONE_SCENARII;
+non terminal INST,SIMPLE,BOUCLE,CONDITION,MESSAGE,S,LIST_DATE,STRUCT,COND,PARAMETRES,OP,OP2,OP3,OP5,IDFSS,IDFSSS;
+non terminal String OP4;
+non terminal String TYPEA;
+
+DEBUT ::= ProgD ZONE_APPAREILS ZONE_COMMUNE ZONE_COMMANDE ProgDF {:
+ System.out.println("FINPROG "+parser.pline()+","+parser.pcolumn()); 
+   String str="public class CMaisonUser extends CMaison { public CMaisonUser() { \n super();\n";
+  for(Entry <String,Entree>  entry: App_simple.entrySet())
+   {
+       
+       switch (entry.getValue().getType())
+       {
+       case 0:
+       str+=" CVoletFenetre "+entry.getKey()+" = new CVoletFenetre (\""+entry.getKey()+"\", TypeAppareil.VOLET);\n"; 
+       str+=" ma_liste_appareils.add("+entry.getKey()+");\n";
+       break;
+       case 1:
+       str+=" CChauffage "+entry.getKey()+" = new CChauffage(\""+entry.getKey()+"\", TypeAppareil.CHAUFFAGE);\n";   
+       str+=" ma_liste_appareils.add("+entry.getKey()+");\n";
+       break;
+       case 2:
+       str+=" CVoletFenetre "+entry.getKey()+" = new CVoletFenetre (\""+entry.getKey()+"\", TypeAppareil.FENETRE); \n"; 
+       str+=" ma_liste_appareils.add("+entry.getKey()+");\n";
+       break;
+       case 3:
+       str+=" CEclairage "+entry.getKey()+" = new CEclairage (\""+entry.getKey()+"\", TypeAppareil.ECLAIRAGE);\n"; 
+       str+=" ma_liste_appareils.add("+entry.getKey()+");\n";
+       break;
+       case 4:
+       str+=" CAlarme "+entry.getKey()+" = new CAlarme (\""+entry.getKey()+"\", TypeAppareil.ALARME);\n"; 
+       str+=" ma_liste_appareils.add("+entry.getKey()+");\n";
+       break;
+       case 5:
+       str+=" CAutreAppareil "+entry.getKey()+" = new CAutreAppareil (\""+entry.getKey()+"\", TypeAppareil.AUTRE_APPAREIL_"+entry.getValue().getAutre()+");\n"; 
+       str+=" ma_liste_appareils.add("+entry.getKey()+");\n";
+       break;
+       }
+
+    }
+   
+
+
+   
+   for(Entry <String,Vector<String> >  entry: App_struct.entrySet())
+   {
+        
+         str+=" CEnsAppareil "+entry.getKey()+" = new CEnsAppareil(\""+entry.getKey()+"\");\n";
+       for(String string : entry.getValue())
+       {
+        str+=entry.getKey()+".addAppareil("+string+");\n";
+          
+       }
+
+   str+="ma_liste_ens_appareils.add("+entry.getKey()+"); \n"; 
+
+   }
+
+// interfaces
+
+      for(Entry <String,String >  entry: Scenarios.entrySet())
+    {
+
+      
+             str+=entry.getValue();
+             str+= "CScenario "+entry.getKey()+" = new CScenario(\""+entry.getKey()+"\","+entry.getKey()+"_contenu ); \n "+
+                " ma_liste_scenarios.add("+entry.getKey()+");  \n";
+             str+="\n\n\n";
+    }
+
+str+="  monHabitat = new HabitatSpecific(ma_liste_appareils,ma_liste_ens_appareils, ma_liste_scenarios,ma_liste_interfaces, ma_liste_programmations);\n}\n}";
+generate_code(str,"exemple_CMaisonUser.java");    
+
+    
+    int i=0;
+    str="import java.util.ArrayList;\n public class HabitatSpecific extends Habitat {\n public HabitatSpecific(ArrayList<CAppareil> lapp, ArrayList<CEnsAppareil> lens, ArrayList<CScenario> lscen, ArrayList<CInterface> lint, ArrayList<CProgrammation> lprog)\n { super(lapp,lens,lscen,lint,lprog); }\n public void execScenarioNum(int num) \n{ System.out.println( \"Execution du scenario \"+this.l_scenarios.get(num).getNomScenario()+\"... \");";
+    str+=" \n \n switch(num) {\n";
+    for(Entry<String,String> entry:Scenarios.entrySet()){
+    str+="\n case "+i+":\n";
+    i++;
+    
+    String treated=entry.getValue().replace("+"," ");
+    treated=treated.replaceAll("(\")","");
+    treated=treated.replace("\\","\"");
+    String tab[]=treated.split("=");
+    str+=tab[1];
+    str+="\n break ;\n";
+
+    }
+    str+="\n default:  \n } } } \n" ;
+
+generate_code(str,"exemple_HabitatSpecific.java");    
+
+ 
+   
+ :} ;
+
+ZONE_APPAREILS ::= Dec_App APPAREILS Dec_AppF;
+
+APPAREILS ::= TYPEA IDFS POINT APPAREILS 
+            | TYPEA IDFS POINT
+            | STRUCT APPAREILS 
+            | STRUCT;
+
+IDFS ::= IDF:k 
+   {:    if(type!=5) {if(App_simple.get(k)==null) App_simple.put(k,new Entree(type)); 
+       else {
+          identifiant_existant(k);
+       }
+        }
+             else {if(App_simple.get(k)==null) App_simple.put(k,new Entree(type,null,autre)); 
+             else
+             {
+                  identifiant_existant(k);
+
+             }
+             
+             }    
+          
+:}
+ OP5 IDFS 
+     
+       | IDF:k 
+       {:    if(type!=5) { if(App_simple.get(k)==null) App_simple.put(k,new Entree(type)); 
+       else
+       {
+           identifiant_existant(k);
+       }
+       }
+        else {if(App_simple.get(k)==null) { App_simple.put(k,new Entree(type,null,autre)); autre=null; other=false;
+        }
+        else
+        {
+        identifiant_existant(k);
+
+        }
+        }
+        
+:}
+       | error OP5 IDFS 
+       | error; 
+
+OP5 ::= V 
+     | error;
+
+TYPEA ::= VOLET {: type=0; RESULT="VOLET"; :}
+        | CHAUFFAGE {: type=1; RESULT="CHAUFFAGE";:}
+        | FENETRE  {: type=2; RESULT="FENETRE"; :}
+        | ECLAIRAGE {: type=3; RESULT="ECLAIRAGE";:}
+        | ALARME  {: type=4; RESULT="ALARME";:}
+        | AUTRE_VIDE PG AUTRE:s PD {: type=5; if(s.equals("cafetiere")) 
+        
+        { RESULT="CAFE";autre="CAFE";} else {
+            RESULT="HIFI";
+            autre="HIFI";}
+           other=true;  :}; // recup quel autre switch case
+
+STRUCT ::= definir IDF:k EGAL AG IDFSS AD POINT
+{: 
+   App_struct.put(k,v);
+   v=new Vector<String>();
+ :}
+; 
+
+
+IDFSS::=  IDF:k OP5 IDFSS 
+       {: v.add(k);
+       
+       :}
+       | IDF:k
+       {: v.add(k); :}
+       | error OP5 IDFSS
+       | error; 
+
+ZONE_COMMUNE ::= ZONE_INTERFACES 
+               | ZONE_SCENARII ;
+
+ZONE_INTERFACES ::= Dec_Int INTERFACES Dec_IntF 
+                  | Dec_Int INTERFACES Dec_IntF ZONE_SCENARII;
+
+INTERFACES ::= APPR_DIST IDFSSS POINT INTERFACES 
+             | APPR_DIST IDFSSS POINT;
+
+IDFSSS ::= IDF OP5 IDFSSS
+         | IDF
+         | error OP5 IDFSSS
+         | error; 
+
+ZONE_SCENARII ::= Dec_Sce SCENARIOS Dec_SceF;
+
+
+
+    
+
+SCENARIOS ::= Scenario OP4:k CD INST ScenarioF OP4:k1 CD {:  
+  
+    if(k!=null && k1!=null) // pas d'erreur lors de la déclaration du scénario
+    {
+      if(Scenarios.get(k)==null && App_simple.get(k)==null && App_struct.get(k)==null && k1.equals(k))
+      {
+         int index=scenario_contenu.lastIndexOf("+");
+         scenario_contenu=scenario_contenu.substring(0,index)+scenario_contenu.substring(index+1);
+         scenario_contenu="String "+k+"_contenu ="+scenario_contenu+";\n"; 
+         Scenarios.put(k,scenario_contenu);
+         scenario_contenu="";
+         
+      } 
+      else 
+       { 
+        if(!k.equals(k1))
+        {
+        scenario_fermé(k,k1);
+        }
+        else
+        {
+         scenario_existant(k);
+         scenario_contenu="";
+        }
+       }  
+    } 
+    else
+    {
+      scenario_contenu="";
+    }   
+    :} SCENARIOS
+   
+            | Scenario OP4:k CD INST ScenarioF OP4:k1 CD
+  {:  
+    if(k!=null) // pas d'erreur lors de la déclaration du scénario
+    {
+      if(Scenarios.get(k)==null && App_simple.get(k)==null && App_struct.get(k)==null && k1==k)
+      {
+         int index=scenario_contenu.lastIndexOf("+");
+         scenario_contenu=scenario_contenu.substring(0,index)+scenario_contenu.substring(index+1);
+         scenario_contenu="String "+k+"_contenu ="+scenario_contenu+";\n"; 
+         Scenarios.put(k,scenario_contenu);
+         scenario_contenu="";
+         
+      } 
+      else 
+       { 
+         
+         if(k!=k1)
+        {
+        scenario_fermé(k,k1);
+        }
+        else
+        {
+         scenario_existant(k);
+         scenario_contenu="";
+        }
+       }  
+    } 
+   else {scenario_contenu="";}    
+    :} 
+             ;
+
+INST ::= OP 
+       | OP INST;
+
+OP ::= BOUCLE  
+     | CONDITION
+     | MESSAGE
+     | SIMPLE 
+     | executer_scenario IDF:k POINTV {: 
+     List<String> keyIndex = new ArrayList<String>(Scenarios.keySet());
+     scenario_contenu+=" \n  \" this.execScenarioNum("+keyIndex.indexOf(k)+"); \" + \n";
+     
+     :}; 
+
+SIMPLE ::= IDF:k POINT OPERATION:o POINTV
+{:
+
+    if(!boucle && !cond)
+   {scenario_contenu+=  "\"for(CAppareil appareil : this.l_appareils)   \"  \n + " +
+       "    \" if (appareil.getNomAppareil().equals(\\\""+k+"\\\")) appareil.appliquer(TypeActionAppareil."+o.toUpperCase()+");  \" +\n";
+   }
+   else
+   {
+   if(!cond)
+     { 
+              
+         if(!inst_impossible)
+      {
+        
+         if(iterateur!=null)
+         {
+         scenario_contenu+=" \" for(CEnsAppareil ensAppareil : this.l_ensembles)  \" + \n " +
+        "  \" if (ensAppareil.nomEnsAppareil.equals(\\\""+iterateur+"\\\"))   \" + \n ";
+        scenario_contenu+=" \" for(CAppareil appareil : ensAppareil.l_appareils) \"     \n +" ;
+        scenario_contenu+= " \" appareil.appliquer(TypeActionAppareil."+o.toUpperCase()+");  \" \n";
+
+         }
+         else
+       {
+        scenario_contenu+=" \" for(CAppareil appareil : this.l_appareils) \"     \n +" ; 
+        if(other)
+       { if(autre!=null)
+        scenario_contenu+= " \" if (appareil.typeAppareil.equals(TypeAppareil.AUTRE_APPAREIL_"+T+")) appareil.appliquer(TypeActionAppareil."+o.toUpperCase()+");  \" +\n " ;
+         else
+        scenario_contenu+= " \" if (appareil.estAutreAppareil)) appareil.appliquer(TypeActionAppareil."+o.toUpperCase()+");  \" +\n " ;
+ 
+       }
+        else
+         scenario_contenu+= " \" if (appareil.typeAppareil.equals(TypeAppareil."+T+")) appareil.appliquer(TypeActionAppareil."+o.toUpperCase()+");  \" +\n " ;
+
+       }         
+       
+       boucle=false;
+       iterateur=null;
+       other=false;
+       autre=null;
+     }
+     else{ System.out.println("**** "+T+inst_impossible);scenario_contenu=scenario_contenu;inst_impossible=false;}
+     }
+     else
+    {
+       
+       scenario_contenu+=" \" for(CAppareil appareil : this.l_appareils)  \" + \n   " +
+       "  \" if (appareil.getNomAppareil().equals(\\\""+iterateur+"\\\")) \" + \n     " ; 
+      scenario_contenu+= " \" if (appareil.etatAppareil.equals(TypeEtatAppareil."+T.toUpperCase()+")) \" + \n ";
+     
+       if(k!=iterateur)
+      {
+     scenario_contenu+=" \" { for(CAppareil appareil : this.l_appareils)  \" + \n " +
+       " \"  if (appareil.getNomAppareil().equals(\\\""+k+"\\\")) \" +  \n    " ;
+       
+      }
+     
+       scenario_contenu+= " \" appareil.appliquer(TypeActionAppareil."+o.toUpperCase()+"); " ;
+       scenario_contenu+= k!=iterateur? " } \" \n"  : "\" \n";
+       cond=false;
+       iterateur=null;
+    }   
+
+   }  
+
+  
+
+:}
+         | error POINT OPERATION POINTV ;
+
+BOUCLE ::= POURTOUT OP4:k  DPOINT TYPEA:t     {: 
+     if(Scenarios.get(k)!=null || App_simple.get(k)!=null || App_struct.get(k)!=null)
+     {
+       boucle_impossible(k);
+       inst_impossible=true;
+     }   
+   boucle=true;
+   T=t;
+   
+  :}  FAIRE INST FAIT POINTV 
+ 
+         | POURTOUT OP4:k   DPOINT AUTRE_VIDE    {:
+        if(Scenarios.get(k)!=null || App_simple.get(k)!=null || App_struct.get(k)!=null)
+     {
+       boucle_impossible(k);
+       inst_impossible=true;
+  
+     }  
+       
+       
+         other=true;
+         boucle=true;
+         :}
+       FAIRE INST FAIT POINTV 
+
+      
+         | POURTOUT OP4:k  DPOINT   IDF:it    {:
+      if(Scenarios.get(k)!=null || App_simple.get(k)!=null || App_struct.get(k)!=null)
+     {
+       boucle_impossible(k);
+       inst_impossible=true;
+
+     }  
+      
+      
+      
+       iterateur=it;  
+       boucle=true;  
+
+        :}
+     FAIRE INST FAIT POINTV  
+      ;
+
+
+
+
+OP4 ::= IDF:k {: RESULT=k; :}
+      | error;         
+
+
+CONDITION ::= SI COND ALORS {:
+ cond=true;
+
+:} INST S
+
+
+;  
+
+COND ::= PG IDF:k POINT OPERATION_ET DEGAL ETAT:s PD 
+ {: T=s;
+ iterateur=k;      
+
+:}
+        | PG IDF POINT OPERATION_ET DEGAL IDF POINT OPERATION_ET;
+
+
+
+S ::= FSI POINTV 
+    | SINON {: 
+       scenario_contenu+="+ \" else \" +";
+      :} INST FSI POINTV;                                    
+
+MESSAGE ::= message PG {:
+        scenario_contenu+=" \" System.out.println( ";
+        :}
+ PARAMETRES PD POINTV {: scenario_contenu+="); \" +\n";:}
+        
+;  
+
+PARAMETRES ::= OP2 V {:scenario_contenu+=","; :} PARAMETRES 
+             | OP2 ;
+
+OP2::= CHAINE:s {: scenario_contenu+="\\\""+s.replace("\"","")+"\\\"";  :}
+     | IDF:s   {: scenario_contenu+=s; :}
+     | IDF:s POINT OPERATION_ET:e {:scenario_contenu+= "\\\""+s+"\\\"."+e; :}
+    ; 
+
+ZONE_COMMANDE ::= Dec_Com COMMANDES Dec_ComF;
+
+COMMANDES ::= OP3 COMMANDES
+            | OP3;
+
+OP3::= associer IDF EGAL IDF POINT 
+     | associer IDF EGAL AG IDFS AD POINT 
+     | programmer IDF EGAL AG LIST_DATE AD POINT
+     | programmer IDF EGAL DATE POINT;
+
+LIST_DATE ::= DATE V LIST_DATE 
+            | DATE; 
+          
+
+

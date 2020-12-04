@@ -1,0 +1,34 @@
+<PROGRAMME_DOMUS>
+// Programme simple sans erreur
+
+// declaration des appareils
+<DECLARATION_APPAREILS>
+	eclairage e1, e2.
+	volet v1.
+</DECLARATION_APPAREILS>
+
+// déclaration des interfaces
+<DECLARATION_INTERFACES>
+   	interrupteur b1.
+	mobile t1.
+	telecommande zap.
+</DECLARATION_INTERFACES>
+
+// declaration des scenarii
+<DECLARATION_SCENARII>
+	// declaration du scenario bonjour
+	<SCENARIO bonjour>
+		v1.ouvrir;
+		e1.tamiser;
+		e2.allumer;
+	</SCENARIO bonjour>
+</DECLARATION_SCENARII>
+
+// declaration des commandes
+<DECLARATION_COMMANDES>
+	associer b1 = bonjour.
+	associer t1 = bonjour.
+	associer zap = bonjour.
+</DECLARATION_COMMANDES>
+</PROGRAMME_DOMUS>
+

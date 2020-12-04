@@ -1,0 +1,77 @@
+<PROGRAMME_DOMUS>
+// Programme de test 3 avec erreurs semantiques
+// declaration des appareils
+<DECLARATION_APPAREILS>
+	eclairage e1, e2, e3. 
+	volet v1, e2, e3, v4. 
+	autre_appareil(hifi) e3.
+	chauffage r1, rad1.
+	alarme a1,a2,a1. 
+	volet v5.
+	autre_appareil(cafetiere) cafe.
+</DECLARATION_APPAREILS>
+
+// declaration des interfaces
+<DECLARATION_INTERFACES>
+    interrupteur b1, b3.
+    telecommande zap, a2. 
+    interrupteur b2. 
+</DECLARATION_INTERFACES>
+
+// declaration des scenarii
+<DECLARATION_SCENARII>
+
+	// declaration du scenario bonjour
+	<SCENARIO bonjour> 
+		pourtout v:volet faire v.ouvrir; fait;
+		a1.eteindre;
+		cafe.allumer;
+		si (rad1.etat == eteint) alors rad1.allumer; fsi;
+		hf.allumer;
+	</SCENARIO bonjour> 
+
+	  // declaration du scenario de test
+	<SCENARIO rad1> 
+		e1.allumer;
+		cafe.eteindre;
+	</SCENARIO rad1> 
+
+	<SCENARIO bonjour> 
+		si (a1.etat == eteint) alors a1.allumer; fsi;
+	</SCENARIO bonjour> 
+
+	<SCENARIO test3>
+		pourtout v:volet faire v.ouvrir; fait;
+		cafe.eteindre;
+	</SCENARIO test3>
+
+	<SCENARIO test4>
+		pourtout e:volet faire e.ouvrir; fait;
+		cafe.eteindre;
+		e1.ouvrir;
+	</SCENARIO test5>
+
+// fin scenarii
+</DECLARATION_SCENARII>
+
+// declaration des commandes
+<DECLARATION_COMMANDES>
+	associer b1 = bonjour.
+	associer b4 = test4.
+	associer b5 = toto.
+
+	programmer soiree = (40,1,1,18,0).
+	programmer soiree = (9999,1,1,18,0).
+	programmer soiree = (2018,0,1,18,10).    
+	programmer soiree = (2018,13,1,18,0).
+	programmer soiree = (2019,1,0,18,10).    
+	programmer soiree = (2019,3,32,18,0).    
+	programmer soiree = (2019,4,31,18,0).    
+	programmer soiree = (2019,2,30,18,0).    
+	programmer soiree = (2019,2,29,18,0).
+	programmer bonjour = (2018,12,24,19,0).        
+	programmer soiree = (2013,5,1,22,0).
+	programmer soiree = (2017,_,1,22,0).
+	programmer soiree = (2017,3,_,18,40).        
+</DECLARATION_COMMANDES>
+</PROGRAMME_DOMUS>
